@@ -38,6 +38,10 @@
     urgent: json("data-live-urgent", null),
     on: attr("data-live-on", "#2e7d32"),
     syncs: json("data-live-syncs", null),
+    // Sync cards for things the product does not do yet get a "Coming soon" tag (founder
+    // 2026-10-25: the demos may only claim what a client actually gets today).
+    soon: json("data-live-soon", ["Google Calendar", "Text to", "Call + text", "Confirmation to",
+      "Waitlist", "Drop-off reminder", "On-my-way", "Kitchen printer", "Host stand", "Customer list"]),
   };
 
   var LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
@@ -126,6 +130,8 @@
     ".plc-cards>div>:first-child,.plc-cards>div>b{order:0;font-size:15px}",
     ".plc-cards>div>:last-child{order:1;margin-left:auto;font-size:12.5px}",
     ".plc-cards>div::before{content:'';order:2;flex-basis:100%;height:0}",
+ ".plc-soon{display:inline-block;margin-left:7px;padding:2px 7px;border-radius:999px;font:600 10.5px/1.3 var(--plc-font);letter-spacing:.04em;text-transform:uppercase;background:rgba(0,0,0,.07);color:inherit;opacity:.75;vertical-align:1px}",
+    ".plc-honest{font:500 13px/1.45 var(--plc-font);opacity:.75;margin-top:-4px}",
     ".plc-flash{outline:3px solid var(--plc-accent);outline-offset:2px;border-radius:12px;transition:outline-color 1.2s}",
     "@media (prefers-reduced-motion:reduce){.plc-banner,.plc-launch{transition:none}.plc-dot{animation:none}}",
   ].join("\n");
@@ -162,6 +168,8 @@
     bLive.appendChild(el("span", "plc-dot")); bLive.appendChild(el("span", null, "Type your own (live AI)"));
     modes.appendChild(bGuided); modes.appendChild(bLive);
     leftPane.insertBefore(modes, card);
+    var honest = el("div", "plc-honest", "The guided tour shows the full system; anything marked coming soon is on the way. Live AI shows what works today.");
+    leftPane.insertBefore(honest, card);
 
     var mode = "guided", opened = false, busy = false, convo = [];
     var form = el("form", "plc-form");
@@ -171,6 +179,9 @@
     form.appendChild(input); form.appendChild(send);
 
     function setPressed() {
+      honest.textContent = mode === "guided"
+        ? "The guided tour shows the full system; anything marked coming soon is on the way. Live AI shows what works today."
+        : "This is the real assistant. Every lead it captures is emailed for real (in this demo, to us).";
       bGuided.setAttribute("aria-pressed", mode === "guided");
       bLive.setAttribute("aria-pressed", mode === "live");
     }
@@ -268,6 +279,24 @@
     }
     layout();
     window.addEventListener("resize", layout);
+
+    // ---- "Coming soon" tags on the sent-automatically cards --------------------------------
+    var syncLabel = Array.prototype.filter.call(boardPane.querySelectorAll("div"), function (d) {
+      return /^sent automatically$/i.test(d.textContent.trim());
+    })[0];
+    var syncGrid = syncLabel && syncLabel.nextElementSibling;
+    function tagSoon() {
+      Array.prototype.forEach.call(syncGrid.children, function (cardEl) {
+        var nameEl = cardEl.querySelector("div > div");
+        if (!nameEl || nameEl.querySelector(".plc-soon")) return;
+        var n = nameEl.textContent.trim();
+        if (cfg.soon.some(function (p) { return n.indexOf(p) === 0; })) nameEl.appendChild(el("span", "plc-soon", "Coming soon"));
+      });
+    }
+    if (syncGrid) {
+      tagSoon();
+      new MutationObserver(tagSoon).observe(syncGrid, { childList: true });  // re-tag after each render
+    }
 
     // ---- Owner's-phone banner when the board changes off screen ------------------------
     var label = (boardPane.firstElementChild && boardPane.firstElementChild.textContent || "Your board")
