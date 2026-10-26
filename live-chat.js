@@ -19,6 +19,9 @@
  *     that fit the screen, and the "on the left / on the right" copy is rewritten.
  *  4. A "your book just updated" banner whenever the board changes while it is off screen.
  *  5. Usage counter to POST /event: view, scripted_tap, chat_open, chat_message. No cookies.
+ *  6. Owner signup (founder 2026-10-26: keep them rolling straight into signing up). Every
+ *     "Get this / Set this up for my ..." button opens a short form on the page instead of
+ *     leaving for the website. POST /signup emails PGT; the owner is told Les will text them.
  */
 (function () {
   var API = "https://vertical-demos.onrender.com";
@@ -133,6 +136,23 @@
  ".plc-soon{display:inline-block;margin-left:7px;padding:2px 7px;border-radius:999px;font:600 10.5px/1.3 var(--plc-font);letter-spacing:.04em;text-transform:uppercase;background:rgba(0,0,0,.07);color:inherit;opacity:.75;vertical-align:1px}",
     ".plc-honest{font:500 13px/1.45 var(--plc-font);opacity:.75;margin-top:-4px}",
     ".plc-flash{outline:3px solid var(--plc-accent);outline-offset:2px;border-radius:12px;transition:outline-color 1.2s}",
+    // Owner signup sheet: bottom sheet on phones, centered card on wider screens.
+    ".plc-veil{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}",
+    ".plc-sheet{position:relative;width:100%;max-width:460px;max-height:92dvh;overflow-y:auto;box-sizing:border-box;background:#fff;color:#111;border-radius:22px 22px 0 0;padding:22px 20px 20px;font:15px/1.45 var(--plc-font);box-shadow:0 -10px 40px rgba(0,0,0,.3)}",
+    "@media (min-width:640px){.plc-veil{align-items:center}.plc-sheet{border-radius:22px}}",
+    ".plc-sheet h3{margin:0 34px 4px 0;font:700 21px/1.2 var(--plc-font);color:var(--plc-ink)}",
+    ".plc-sheet p{margin:0 0 14px;opacity:.75;font-size:14px}",
+    ".plc-sheet label{display:block;margin:0 0 10px;font-weight:600;font-size:13.5px}",
+    ".plc-sheet input,.plc-sheet textarea{display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid rgba(0,0,0,.2);border-radius:12px;padding:11px 13px;font:16px var(--plc-font);color:#111;background:#fff}",
+    ".plc-sheet textarea{min-height:70px;resize:vertical}",
+    ".plc-sheet .plc-opt{font-weight:400;opacity:.6}",
+    ".plc-sheet .plc-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}",
+    ".plc-sheet button[type=submit],.plc-sheet .plc-done{width:100%;border:0;border-radius:24px;min-height:50px;margin-top:6px;font:700 16px var(--plc-font);background:var(--plc-accent);color:#fff;cursor:pointer}",
+    ".plc-sheet button:disabled{opacity:.55;cursor:default}",
+    ".plc-sheet .plc-x{position:absolute;right:12px;top:10px;border:0;background:none;font-size:28px;line-height:1;color:#111;opacity:.55;cursor:pointer;padding:6px 10px}",
+    ".plc-sheet .plc-err{color:#b3261e;font-weight:600;font-size:14px;margin:4px 0 0}",
+    ".plc-sheet .plc-fine{font-size:12.5px;opacity:.6;text-align:center;margin:10px 0 0}",
+    ".plc-sheet a{color:var(--plc-ink)}",
     "@media (prefers-reduced-motion:reduce){.plc-banner,.plc-launch{transition:none}.plc-dot{animation:none}}",
   ].join("\n");
 
@@ -261,7 +281,7 @@
       addMsg({ isLead: true, text: lead.urgent ? "Urgent, sent to the owner" : "Sent to the owner", rows: rows });
       addMsg({ isNote: true, text: stacked ? "It just landed in the owner's board below" : "It just landed in the owner's board" });
       var cta = el("a", "plc-cta", "Get this for my business");
-      cta.href = MAIN_SITE; cta.target = "_blank"; cta.rel = "noopener";
+      cta.href = MAIN_SITE;  // the signup sheet catches the click; the link is the no-JS fallback
       form.insertBefore(cta, form.firstChild);
       inst.setState({});  // re-render so the board picks up the lead
     }
@@ -383,6 +403,84 @@
     }, 7000);
     launchState();
   }
+
+  // ---- Owner signup sheet ------------------------------------------------------------------
+  var CTA_RE = /^\s*(get|set) this\b/i;
+  function openSignup(title) {
+    track("signup_open");
+    var veil = el("div", "plc-veil");
+    var sheet = el("form", "plc-sheet"); sheet.noValidate = true;
+    sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true"); sheet.setAttribute("aria-label", title);
+    var x = el("button", "plc-x", "×"); x.type = "button"; x.setAttribute("aria-label", "Close");
+    sheet.appendChild(x);
+    sheet.appendChild(el("h3", null, title));
+    sheet.appendChild(el("p", null, "Tell us about your business. Les from PGT will text you within a day to get it set up. No payment, no commitment."));
+    function field(label, name, opts) {
+      opts = opts || {};
+      var l = el("label", null, label);
+      if (opts.optional) l.appendChild(el("span", "plc-opt", " (optional)"));
+      var i = el(opts.area ? "textarea" : "input"); i.name = name;
+      if (!opts.area) i.type = opts.type || "text";
+      if (opts.auto) i.autocomplete = opts.auto;
+      if (opts.mode) i.inputMode = opts.mode;
+      i.maxLength = opts.max || 120;
+      l.appendChild(i); sheet.appendChild(l); return i;
+    }
+    var fBiz = field("Business name", "business", { auto: "organization" });
+    var fName = field("Your name", "name", { auto: "name", max: 80 });
+    var fPhone = field("Mobile number (we text, no calls)", "phone", { type: "tel", auto: "tel", mode: "tel", max: 40 });
+    var fEmail = field("Email", "email", { type: "email", auto: "email", optional: true });
+    var fSite = field("Website", "website", { type: "url", auto: "url", optional: true, max: 200 });
+    var fNote = field("What would help most?", "note", { area: true, optional: true, max: 1000 });
+    var hp = el("label", "plc-hp", "Company"); var hpIn = el("input"); hpIn.name = "company"; hpIn.tabIndex = -1; hpIn.autocomplete = "off";
+    hp.appendChild(hpIn); hp.setAttribute("aria-hidden", "true"); sheet.appendChild(hp);
+    var err = el("div", "plc-err"); err.setAttribute("role", "alert");
+    var send = el("button", null, "Send it to Les"); send.type = "submit";
+    sheet.appendChild(err); sheet.appendChild(send);
+    var fine = el("div", "plc-fine");
+    fine.appendChild(document.createTextNode("Rather look around first? "));
+    var more = el("a", null, "See everything PGT does"); more.href = MAIN_SITE; more.target = "_blank"; more.rel = "noopener";
+    fine.appendChild(more); sheet.appendChild(fine);
+    veil.appendChild(sheet); document.body.appendChild(veil);
+    var prevOverflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+    function close() { veil.remove(); document.body.style.overflow = prevOverflow; document.removeEventListener("keydown", onKey); }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    document.addEventListener("keydown", onKey);
+    x.addEventListener("click", close);
+    veil.addEventListener("click", function (e) { if (e.target === veil) close(); });
+    setTimeout(function () { fBiz.focus(); }, 50);
+
+    sheet.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var d = { vertical: cfg.vertical, business: fBiz.value.trim(), name: fName.value.trim(), phone: fPhone.value.trim(),
+        email: fEmail.value.trim(), website: fSite.value.trim(), note: fNote.value.trim(), company: hpIn.value };
+      if (!d.business || !d.name) { err.textContent = "Add your business name and your name."; return; }
+      if (!d.phone && d.email.indexOf("@") < 0) { err.textContent = "Add a mobile number (or an email) so Les can reach you."; return; }
+      err.textContent = ""; send.disabled = true; send.textContent = "Sending...";
+      fetch(API + "/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d) })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          if (!res.ok) throw new Error((res.j && res.j.error) || "fail");
+          while (sheet.childNodes.length > 1) sheet.removeChild(sheet.lastChild);
+          sheet.appendChild(el("h3", null, "You're in, " + d.name.split(" ")[0] + "."));
+          sheet.appendChild(el("p", null, "Les will " + (d.phone ? "text you at " + d.phone : "email you at " + d.email) +
+            " within a day to set this up for " + d.business + ". Keep playing with the demo in the meantime."));
+          var done = el("button", "plc-done", "Back to the demo"); done.type = "button";
+          done.addEventListener("click", close); sheet.appendChild(done); done.focus();
+        })
+        .catch(function (e2) {
+          send.disabled = false; send.textContent = "Send it to Les";
+          var m = e2 && e2.message;
+          err.textContent = m && m !== "fail" && m.indexOf("fetch") < 0 ? m : "That didn't go through. Check your connection and try again.";
+        });
+    });
+  }
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest("a");
+    if (!a || !CTA_RE.test(a.textContent || "")) return;
+    e.preventDefault(); e.stopPropagation();
+    openSignup((a.textContent || "Get this for my business").trim());
+  }, true);
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount);
   else mount();
